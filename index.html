@@ -1,0 +1,156 @@
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>השקייה אוטומטית</title>
+    <style>
+      :root { --gap: 12px; }
+      body { font-family: Arial, sans-serif; margin: 20px; max-width: 800px; }
+      h1 { margin-bottom: 10px; }
+      .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+      .row { display: flex; gap: var(--gap); flex-wrap: wrap; }
+      button { padding: 10px 16px; border: 1px solid #222; border-radius: 10px; background: #f5f5f5; cursor: pointer; }
+      .on { color: green; font-weight: bold; }
+      .off { color: red; font-weight: bold; }
+      input[type=number] { width: 110px; }
+      small { color: #666; }
+      .grow { flex: 1 1 140px; }
+      .plants { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--gap); }
+      .plant { border: 1px solid #ddd; border-radius: 12px; padding: 12px; }
+      .plant h4 { margin: 0 0 8px; font-size: 1.05rem; }
+      .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; margin-bottom: 8px; }
+      .kv b { color: #444; }
+      .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+      .hidden { display:none; }
+    </style>
+  </head>
+<body>
+<h1>🌿 עציץ חכם – לוח בקרה</h1>
+<div class="card">
+  <div>IP התקן: <span id="ip">—</span></div>
+  <small>המידע למטה מוצג לפי הרשימה שהשרת שולח ב‑WebSocket בתוך המפתח <code>plants</code>.</small>
+</div>
+
+
+<div class="card">
+  <h3>כל העציצים</h3>
+  <div id="plants" class="plants"></div>
+</div>
+
+
+<!-- תבנית (template) לכרטיס צמח בודד - לא מוצגת, משמשת לשכפול -->
+<template id="plant-tpl">
+<div class="plant" data-zone="">
+  <h4><span class="name">—</span> <small>(ID <span class="id">?</span>)</small></h4>
+  <div class="kv">
+    <b>יובש נוכחי:</b> <span class="dry">—</span>%
+    <b>סף יובש:</b> <span class="thr">—</span>%
+    <b>מצב משאבה:</b> <span class="pump off">OFF</span>
+    <b>השקיה אחרונה:</b> <span class="lastWatering">—</span>
+  </div>
+
+
+  <div class="controls">
+    <button class="pumpBtn" data-cmd="on">הפעל</button>
+    <button class="pumpBtn" data-cmd="off">כבה</button>
+    <button class="pumpBtn" data-cmd="toggle">החלף</button>
+  </div>
+</div>
+</template>
+
+<script>
+let ws;   // let – משתנה שניתן לשינוי
+const $ = (id) => document.getElementById(id);  // פונקציה שמחזירה את האלמנט עם ה-ID
+const elPlants = $('plants');
+
+// פותחים WebSocket ל־פורט 81 (כולל ניסיון התחברות מחדש במקרה ניתוק)
+function connectWS() {   // פונקציה שיוצרת חיבור חדש ל-WebSocket מול ה-ESP32
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';  // אם הדף נטען ב-HTTPS אז צריך WSS
+  const host  = location.host.split(':')[0]; // בלי הפורט של HTTP
+  const url   = `${proto}://${host}:81/`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    console.log('WS connected');
+    // השרת יכול לשלוח סטטוס ראשוני אוטומטית כאן
+  };
+
+  ws.onmessage = (ev) => {
+    // מצפה ל-JSON כמו:
+    //ev comes from wsBroadcastStatus in the html_backend
+    try {
+      const j = JSON.parse(ev.data);
+      if ('ip' in j)        $('ip').textContent  = j.ip || '—';
+      if (Array.isArray(j.plants)) renderPlants(j.plants);
+    } catch (e) {
+      console.error('Bad JSON from WS:', ev.data);
+    }
+  };
+
+  ws.onclose = () => {   // מה קורה אם הוובסוקט נסגר
+    console.warn('WS closed – retry in 2s');
+    setTimeout(connectWS, 2000);  // מחכה 2 שניות ומתחבר מחדש
+  };
+
+  ws.onerror = (e) => {
+    console.error('WS error', e);
+    try { ws.close(); } catch (_) {}
+  };
+}
+
+// שליחת פקודות דרך WS ל-ESP
+function sendWS(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) {  // אם החיבור פתוח
+    ws.send(JSON.stringify(obj));
+  } else {
+    console.warn('WS not ready');
+  }
+}
+
+function renderPlants(list) {
+  // מיפוי קיים לפי id כדי לעדכן במקום לשחזר כל פעם
+  const current = new Map(Array.from(elPlants.children).map(card => [card.dataset.id, card]));
+
+  for (const p of list) {
+    const idKey  = String(p.id);
+    let card = current.get(idKey);
+    if (!card) {
+    // יצירת כרטיס חדש מהתבנית
+    const tpl = document.getElementById('plant-tpl');
+    card = tpl.content.firstElementChild.cloneNode(true);
+    card.dataset.id = idKey;
+
+
+    // מאזינים לכפתורים
+    for (const btn of card.querySelectorAll('.pumpBtn')) {
+      btn.addEventListener('click', () => {
+        sendWS({ cmd: 'pump', pump_pin: p.pump_pin, value: btn.dataset.cmd });
+      });
+    }
+
+
+    elPlants.appendChild(card);
+    }
+
+
+    // עדכון תוכן הכרטיס
+    card.querySelector('.name').textContent = p.name ?? `Zone ${p.zone}`;
+    card.querySelector('.id').textContent = p.id;
+
+
+    if ('dryness' in p) card.querySelector('.dry').textContent = p.dryness;
+    if ('threshold' in p) card.querySelector('.thr').textContent = p.threshold;
+    if ('last_watering' in p) card.querySelector('.lastWatering').textContent = p.last_watering;
+
+    if ('pump' in p) {
+      const el = card.querySelector('.pump');
+      el.textContent = p.pump ? 'ON' : 'OFF';
+      el.className = 'pump ' + (p.pump ? 'on' : 'off');
+    }
+  }
+}
+
+window.addEventListener('DOMContentLoaded', connectWS);  // מה שקורה לאחר טעינת ה-DOM
+</script>
+</body>
+</html>
