@@ -7,10 +7,13 @@
 #include <WebSocketsServer.h>   // arduinoWebSockets
 #include <Preferences.h>
 #include <ArduinoJson.h> 
+#include <WebServer.h>
+
 #include "sensor_control.h"
 #include "pump_control.h" 
 #include "wifi_control.h"
 #include "plants.h"
+#include "html_data.h"
 
 
 //==================== פונקציות שנלקחות מתקיות אחרות ========================
@@ -25,11 +28,12 @@
     // uint8_t pumpGetPin();             החזרת ה-GPIO הנוכחי של המשאבה
 
 
-static const uint16_t WS_PORT = 81;
+static const uint16_t WS_PORT = 81; 
 
 // ====== אובייקטים גלובליים פנימיים ======
-static WebSocketsServer ws(WS_PORT);
+static WebSocketsServer ws(WS_PORT);  // זה וובסוקט תקשורת בין הדפדפן לבקר, לא וובסרבר!!
 static Preferences prefs;
+static WebServer server(80);  // זה בעצם השרת, עליו נפתח הHTML
 
 static uint8_t g_threshold = 60;   // ברירת מחדל לחות
 //static uint8_t g_pumpPin   = 23;   // ברירת מחדל פין
@@ -112,6 +116,12 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t len)
   }
 }
 
+static void handleRoot() {
+  Serial.println("SERVER: Received HTTP request for index.html!"); // הדפסת Debug
+  // **שולח את ה-HTML המוטמע ישירות מה-Flash**
+  server.send(200, "text/html", HTML_CONTENT); 
+}
+
 
 // =============== חיבור לוויפיי =========================
 
@@ -124,6 +134,7 @@ void wifiControlBegin(const char* staSsid, const char* staPass,  // שם ראו�
   unsigned long t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 4000) {  // מנסה להתחבר כל 200 מילישניות, בחלון של 4 שניות
     delay(200);
+    Serial.print("connecting to WIFI...  ");
   }
   if (WiFi.status() != WL_CONNECTED) {  // אם נכשל להתחבר לראוטר חיצוני
     Serial.println("WiFi: STA connect failed. Starting AP mode...");
@@ -134,13 +145,20 @@ void wifiControlBegin(const char* staSsid, const char* staPass,  // שם ראו�
     Serial.printf("WiFi: STA connected");
   }
 
+  // --- **חדש: אתחול שרת HTTP** ---
+  server.on("/", HTTP_GET, handleRoot); // מגדירים את הפונקציה שתטפל ב-IP הבסיסי
+  server.begin();
+  Serial.println("HTTP: listening on port 80!");
+  // --------------------------
+
   ws.begin();
   ws.onEvent(onWsEvent);
-  Serial.printf("WS: listening");
+  Serial.printf("WS: listening on port %d\n", WS_PORT);
 }
 
 void wifiControlLoop() {
   ws.loop();  //  דואג לכך שהווב סוקט ממשיך לחכות לקריאות
+  server.handleClient();
 }
 
 

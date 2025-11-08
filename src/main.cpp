@@ -6,15 +6,18 @@
 #include "wifi_control.h"
 #include "plants.h"
 #include "time.h"
+#include <WiFi.h> // **תיקון: Header חסר לגישה ל-WiFi**
 
 const unsigned long CHECK_INTERVAL_MS = 10UL * 60UL * 1000UL; // 10 דק'
 const unsigned long WATER_STEP_MS = 200UL;   // כל כמה לבדוק תוך כדי השקיה
 const unsigned long MAX_ON_MS = 5UL * 1000UL;       // 5 שניות
 
+unsigned long g_lastCheckTime = 0; // **חדש: משתנה למעקב אחר זמן בדיקה אחרון**
+
 
 // ====== קבועים ושמות אחסון ======
-constexpr char WIFI_SSID[] = "YOUR_HOME_WIFI_SSID";
-constexpr char WIFI_PASSWORD[] = "YOUR_HOME_WIFI_PASSWORD"; 
+constexpr char WIFI_SSID[] = "";
+constexpr char WIFI_PASSWORD[] = ""; 
 
 // שרת זמן (NTP)
 const char* ntpServer = "pool.ntp.org";
@@ -73,48 +76,57 @@ void setup() {   // put your setup code here, to run once:
   wifiControlBegin(WIFI_SSID, WIFI_PASSWORD); 
   
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  
+  // הדפסת IP בטיחותית
+  if (WiFi.getMode() & WIFI_MODE_STA) {
+    Serial.printf("MAIN: Connected IP: %s\n", WiFi.localIP().toString().c_str());
+  } else if (WiFi.getMode() & WIFI_MODE_AP) {
+    Serial.printf("MAIN: AP IP: %s\n", WiFi.softAPIP().toString().c_str());
+  }
 
   Serial.println("Boot done! start");
 }
 
 void loop() { // put your main code here, to run repeatedly:
-  wifiControlLoop();
+  // **חובה: חייב לרוץ כל הזמן כדי לטפל בבקשות רשת**
+  wifiControlLoop(); 
 
-  for (size_t i = 0; i < g_plants_count; ++i) {
-    Plant& pl = g_plants[i];  // &- להתעסק עם האובייקט עצמו ולא עותק
+  // **בדיקת השקיה באמצעות טיימר לא חוסם**
+  if (millis() - g_lastCheckTime >= CHECK_INTERVAL_MS) {
+    g_lastCheckTime = millis();
+    Serial.println("--- Starting Scheduled Plant Check (Non-Blocking) ---");
 
-    if (pl.dryThreshold >= getMoisturePercent(pl.moisturePin)) {  // צריך להשקות
-      const unsigned long startedAt = millis();
-      
-      bool watering = true;
-      pumpOn(pl.pumpPin);
 
-      while (watering)
-      {
-        delay(WATER_STEP_MS);
+    for (size_t i = 0; i < g_plants_count; ++i) {
+      Plant& pl = g_plants[i];
 
-        if (getMoisturePercent(pl.moisturePin) >= pl.wetThresh){
-          watering = false;
+      if (pl.dryThreshold >= getMoisturePercent(pl.moisturePin)) {  // צריך להשקות
+        const unsigned long startedAt = millis();
+        
+        bool watering = true;
+        pumpOn(pl.pumpPin);
+        Serial.printf("Watering Plant ID %d STARTED.\n", pl.id);
+
+        while (watering)
+        {
+          wifiControlLoop(); // **תיקון קריטי 1: מאפשר טיפול ברשת במהלך ההשקיה**
+          delay(WATER_STEP_MS);
+
+          if (getMoisturePercent(pl.moisturePin) >= pl.wetThresh){
+            watering = false;
+          }
+
+          const unsigned long elapsed = millis() - startedAt;
+          if (elapsed >= MAX_ON_MS){
+            watering = false;
+          }
         }
-
-        const unsigned long elapsed = millis() - startedAt;
-        if (elapsed >= MAX_ON_MS){
-          watering = false;
-        }
+        pumpOff(pl.pumpPin);
+        saveWateringTime(pl);
+        Serial.printf("Watering Plant ID %d FINISHED.\n", pl.id);
       }
-      pumpOff(pl.pumpPin);
-      saveWateringTime(pl);
     }
   }
 
-  delay(CHECK_INTERVAL_MS);
+  // **הוסר delay(CHECK_INTERVAL_MS) החוסם**
 }
-
-
-
-
-
-
-
-
-
