@@ -13,7 +13,8 @@ int readAveragedADC(int pin_soil, int samples) {
   long sum = 0;
   for (int i = 0; i < samples; i++) {
     sum += analogRead(pin_soil);
-    delay(2);
+    // **תיקון קריטי 2: yield() במקום delay(2)**
+    yield(); 
   }
   return (int)(sum / samples);
 }

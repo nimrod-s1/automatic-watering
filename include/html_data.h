@@ -1,3 +1,8 @@
+#pragma once
+#include <Arduino.h>
+
+// שים לב: המילה R"( ו-)" עוטפות את כל תוכן ה-HTML
+const char HTML_CONTENT[] PROGMEM = R"(
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
   <head>
@@ -386,3 +391,4 @@
     </script>
   </body>
 </html>
+)";
