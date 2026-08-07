@@ -1,8 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
-// שים לב: המילה R"( ו-)" עוטפות את כל תוכן ה-HTML
-const char HTML_CONTENT[] PROGMEM = R"(
+// שים לב: המילה R"rawliteral( ו-)rawliteral" עוטפות את כל תוכן ה-HTML
+const char HTML_CONTENT[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
   <head>
@@ -351,12 +351,12 @@ const char HTML_CONTENT[] PROGMEM = R"(
           // עדכון נתונים בכרטיסיה
           card.querySelector('.plant-name').textContent = p.name || `צמח ${p.id}`;
           card.querySelector('.id-val').textContent = p.id;
-          card.querySelector('.moisture-val').textContent = p.dryness ?? '—';
-          card.querySelector('.dry-val').textContent = p.threshold ?? '—';
-          card.querySelector('.wet-val').textContent = p.wet_thresh ?? '—';
-          card.querySelector('.mpin-val').textContent = p.moisture_pin ?? '—';
-          card.querySelector('.ppin-val').textContent = p.pump_pin ?? '—';
-          card.querySelector('.last-watering').textContent = p.last_watering || 'טרם הושרקה';
+          card.querySelector('.moisture-val').textContent = (p.dryness !== undefined && p.dryness !== null) ? p.dryness : '—';
+          card.querySelector('.dry-val').textContent = (p.threshold !== undefined && p.threshold !== null) ? p.threshold : '—';
+          card.querySelector('.wet-val').textContent = (p.wet_thresh !== undefined && p.wet_thresh !== null) ? p.wet_thresh : '—';
+          card.querySelector('.mpin-val').textContent = (p.moisture_pin !== undefined && p.moisture_pin !== null) ? p.moisture_pin : '—';
+          card.querySelector('.ppin-val').textContent = (p.pump_pin !== undefined && p.pump_pin !== null) ? p.pump_pin : '—';
+          card.querySelector('.last-watering').textContent = p.last_watering || 'טרם הושקה';
 
           // סרגל לחות
           const barFill = card.querySelector('.moisture-bar-fill');
@@ -391,4 +391,4 @@ const char HTML_CONTENT[] PROGMEM = R"(
     </script>
   </body>
 </html>
-)";
+)rawliteral";

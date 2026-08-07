@@ -8,7 +8,7 @@
 #include "time.h"
 #include <WiFi.h>
 
-const unsigned long CHECK_INTERVAL_MS = 10UL * 60UL * 1000UL; // 10 דק'
+const unsigned long CHECK_INTERVAL_MS = 30UL * 60UL * 1000UL; // 0 דק'
 const unsigned long WATER_STEP_MS = 200UL;   // כל כמה לבדוק תוך כדי השקיה
 const unsigned long MAX_ON_MS = 5UL * 1000UL;       // 5 שניות
 
@@ -16,8 +16,8 @@ unsigned long g_lastCheckTime = 0; // משתנה למעקב אחר זמן בדי
 
 
 // ====== קבועים ושמות אחסון ======
-constexpr char WIFI_SSID[] = "41";
-constexpr char WIFI_PASSWORD[] = "0545618373"; 
+constexpr char WIFI_SSID[] = "";
+constexpr char WIFI_PASSWORD[] = ""; 
 
 // שרת זמן (NTP)
 const char* ntpServer = "pool.ntp.org";
