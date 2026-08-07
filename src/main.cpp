@@ -3,21 +3,21 @@
 #include "driver/adc.h"
 #include "sensor_control.h"
 #include "pump_control.h" 
-#include "wifi_control.h"
+#include "web_server_control.h"
 #include "plants.h"
 #include "time.h"
-#include <WiFi.h> // **תיקון: Header חסר לגישה ל-WiFi**
+#include <WiFi.h>
 
 const unsigned long CHECK_INTERVAL_MS = 10UL * 60UL * 1000UL; // 10 דק'
 const unsigned long WATER_STEP_MS = 200UL;   // כל כמה לבדוק תוך כדי השקיה
 const unsigned long MAX_ON_MS = 5UL * 1000UL;       // 5 שניות
 
-unsigned long g_lastCheckTime = 0; // **חדש: משתנה למעקב אחר זמן בדיקה אחרון**
+unsigned long g_lastCheckTime = 0; // משתנה למעקב אחר זמן בדיקה אחרון
 
 
 // ====== קבועים ושמות אחסון ======
-constexpr char WIFI_SSID[] = "";
-constexpr char WIFI_PASSWORD[] = ""; 
+constexpr char WIFI_SSID[] = "41";
+constexpr char WIFI_PASSWORD[] = "0545618373"; 
 
 // שרת זמן (NTP)
 const char* ntpServer = "pool.ntp.org";
@@ -25,33 +25,20 @@ const long gmtOffset_sec = 2 * 3600;  // שעון ישראל (GMT+2)
 const int daylightOffset_sec = 3600;  // הוספת שעה בקיץ
 
 
-// ---- פונקציות גישה לזכרון פלאש ----
-static Preferences prefs;   //  גישה לזכרון פלאש
-
 void saveWateringTime(Plant& pl) {
   struct tm timeinfo;
-  const String key = "plant_" + String(pl.id);
 
   if (getLocalTime(&timeinfo)) {
     char buffer[30];
     strftime(buffer, sizeof(buffer), "%d/%m/%Y %H:%M:%S", &timeinfo);
-    prefs.putString(key.c_str(), buffer);
     pl.lastWatering = buffer;
   } else {
     // סימון מפורש שנכשל לקבל זמן
     const char* FAIL = "NTP_FAIL";
-    prefs.putString(key.c_str(), FAIL);
     pl.lastWatering = FAIL;
     Serial.println("saveWateringTime: NTP failed, wrote NTP_FAIL");
   }
-}
-
-
-String getWateringTime(int plant_id){
-  String key = "plant_" + String(plant_id);
-
-  String lastWatering = prefs.getString(key.c_str(), "-");
-  return lastWatering;
+  savePlantsToNVS();
 }
 
 
@@ -60,20 +47,10 @@ void setup() {   // put your setup code here, to run once:
   Serial.begin(115200);
   delay(200);
 
-  prefs.begin("watering", false);  
-  
-  for (size_t i = 0; i < g_plants_count; ++i) {   
-      Plant& pl = g_plants[i];  // &- להתעסק עם האובייקט עצמו ולא עותק
-      
-      // Moisture Sensor ADC Setting
-      sensorInit(pl.moisturePin);
-      pumpInit(pl.pumpPin);
-
-      // קבלת זמן השקייה אחרון מהפלאש
-      pl.lastWatering = getWateringTime(pl.id);
-  }
+  // אתחול וטעינת רשימת הצמחים הדינמית מ-NVS
+  initPlantStorage();
     
-  wifiControlBegin(WIFI_SSID, WIFI_PASSWORD); 
+  webServerBegin(WIFI_SSID, WIFI_PASSWORD); 
   
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   
@@ -89,18 +66,18 @@ void setup() {   // put your setup code here, to run once:
 
 void loop() { // put your main code here, to run repeatedly:
   // **חובה: חייב לרוץ כל הזמן כדי לטפל בבקשות רשת**
-  wifiControlLoop(); 
+  webServerLoop(); 
 
   // **בדיקת השקיה באמצעות טיימר לא חוסם**
   if (millis() - g_lastCheckTime >= CHECK_INTERVAL_MS) {
     g_lastCheckTime = millis();
     Serial.println("--- Starting Scheduled Plant Check (Non-Blocking) ---");
 
-
-    for (size_t i = 0; i < g_plants_count; ++i) {
+    for (size_t i = 0; i < g_plants.size(); ++i) {
       Plant& pl = g_plants[i];
 
       if (pl.dryThreshold >= getMoisturePercent(pl.moisturePin)) {  // צריך להשקות
+        Serial.println("plant is dry..... :(");
         const unsigned long startedAt = millis();
         
         bool watering = true;
@@ -109,11 +86,13 @@ void loop() { // put your main code here, to run repeatedly:
 
         while (watering)
         {
-          wifiControlLoop(); // **תיקון קריטי 1: מאפשר טיפול ברשת במהלך ההשקיה**
+          Serial.println("watering!!!!!!");
+          webServerLoop(); // מאפשר טיפול ברשת במהלך ההשקיה
           delay(WATER_STEP_MS);
 
           if (getMoisturePercent(pl.moisturePin) >= pl.wetThresh){
             watering = false;
+            Serial.println("finished watering :)))");
           }
 
           const unsigned long elapsed = millis() - startedAt;
@@ -127,6 +106,4 @@ void loop() { // put your main code here, to run repeatedly:
       }
     }
   }
-
-  // **הוסר delay(CHECK_INTERVAL_MS) החוסם**
 }
