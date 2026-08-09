@@ -17,12 +17,13 @@ int readAveragedADC(int pin, int samples = 100) {
 }
 
 int percentFromRaw(int raw, int dry, int wet) {
-  // low ADC - wet;    high ADC - dry
-  long p = (long)(raw - wet) * 100 / (long)(dry - wet);
+  // low ADC -> wet (100%); high ADC -> dry (0%)
+  long p = (long)(dry - raw) * 100 / (long)(dry - wet);
   if (p < 0) p = 0;
   if (p > 100) p = 100;
   return (int)p;
 }
+
 
 
 void setup() {   // put your setup code here, to run once:
