@@ -71,6 +71,7 @@ static void onWsEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t len)
     if (strcmp(cmd, "pump") == 0) {  // קבלת פקודה להדליק או לכבות משאבה
       uint8_t pin = doc["pump_pin"];
       const char* val = doc["value"] | "";
+      Serial.printf("[WS] Received pump command for GPIO %d: %s\n", pin, val);
 
       if (strcmp(val, "on") == 0) pumpOn(pin);
       else if (strcmp(val, "off") == 0) pumpOff(pin);
@@ -135,6 +136,7 @@ void webServerBegin(const char* staSsid, const char* staPass,
 
   // אתחול mDNS - מאפשר גישה מהטלפון/מחשב דרך http://smartplant.local
   if (MDNS.begin("smartplant")) {
+    MDNS.addService("http", "tcp", 80);
     Serial.println("mDNS responder started: http://smartplant.local");
   } else {
     Serial.println("Error setting up MDNS responder!");

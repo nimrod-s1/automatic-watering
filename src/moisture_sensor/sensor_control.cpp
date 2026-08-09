@@ -21,10 +21,10 @@ int readAveragedADC(int pin_soil, int samples) {
 
 
 int getMoisturePercent(int pin_soil, int dry, int wet) {
-  // low ADC - wet;    high ADC - dry
+  // low ADC -> wet (100%); high ADC -> dry (0%)
   int raw = readAveragedADC(pin_soil);
-  long p = (long)(raw - wet) * 100 / (long)(dry - wet);
+  long p = (long)(dry - raw) * 100 / (long)(dry - wet);
   if (p < 0) p = 0;
   if (p > 100) p = 100;
   return (int)p;
-}
+}

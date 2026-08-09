@@ -8,7 +8,7 @@
 #include "time.h"
 #include <WiFi.h>
 
-const unsigned long CHECK_INTERVAL_MS = 30UL * 60UL * 1000UL; // 0 דק'
+const unsigned long CHECK_INTERVAL_MS = 1UL * 60UL * 1000UL; // לבדיקה: בדיקה כל חצי שעה
 const unsigned long WATER_STEP_MS = 200UL;   // כל כמה לבדוק תוך כדי השקיה
 const unsigned long MAX_ON_MS = 5UL * 1000UL;       // 5 שניות
 
@@ -16,8 +16,8 @@ unsigned long g_lastCheckTime = 0; // משתנה למעקב אחר זמן בדי
 
 
 // ====== קבועים ושמות אחסון ======
-constexpr char WIFI_SSID[] = "";
-constexpr char WIFI_PASSWORD[] = ""; 
+constexpr char WIFI_SSID[] = "41";
+constexpr char WIFI_PASSWORD[] = "0545618373"; 
 
 // שרת זמן (NTP)
 const char* ntpServer = "pool.ntp.org";
@@ -71,38 +71,48 @@ void loop() { // put your main code here, to run repeatedly:
   // **בדיקת השקיה באמצעות טיימר לא חוסם**
   if (millis() - g_lastCheckTime >= CHECK_INTERVAL_MS) {
     g_lastCheckTime = millis();
-    Serial.println("--- Starting Scheduled Plant Check (Non-Blocking) ---");
+    Serial.printf("\n--- Scheduled Check (%u plants in system) ---\n", g_plants.size());
+
+    if (g_plants.empty()) {
+      Serial.println("[Check] No plants found in list. Add a plant from Web UI.");
+    }
 
     for (size_t i = 0; i < g_plants.size(); ++i) {
       Plant& pl = g_plants[i];
+      int currentMoisture = getMoisturePercent(pl.moisturePin);
 
-      if (pl.dryThreshold >= getMoisturePercent(pl.moisturePin)) {  // צריך להשקות
-        Serial.println("plant is dry..... :(");
+      Serial.printf("[Check] Plant ID %d '%s' (M-Pin %d, P-Pin %d): Moisture = %d%% | Dry Thresh = %d%%\n",
+                    pl.id, pl.name.c_str(), pl.moisturePin, pl.pumpPin, currentMoisture, pl.dryThreshold);
+
+      if (currentMoisture <= pl.dryThreshold) {  // צריך להשקות
+        Serial.printf("--> Plant '%s' IS DRY! Starting watering...\n", pl.name.c_str());
         const unsigned long startedAt = millis();
         
         bool watering = true;
         pumpOn(pl.pumpPin);
-        Serial.printf("Watering Plant ID %d STARTED.\n", pl.id);
 
         while (watering)
         {
-          Serial.println("watering!!!!!!");
           webServerLoop(); // מאפשר טיפול ברשת במהלך ההשקיה
           delay(WATER_STEP_MS);
 
-          if (getMoisturePercent(pl.moisturePin) >= pl.wetThresh){
+          int m = getMoisturePercent(pl.moisturePin);
+          if (m >= pl.wetThresh){
             watering = false;
-            Serial.println("finished watering :)))");
+            Serial.printf("--> Finished watering! Moisture reached %d%%\n", m);
           }
 
           const unsigned long elapsed = millis() - startedAt;
           if (elapsed >= MAX_ON_MS){
             watering = false;
+            Serial.println("--> MAX_ON_MS safety timeout reached.");
           }
         }
         pumpOff(pl.pumpPin);
         saveWateringTime(pl);
         Serial.printf("Watering Plant ID %d FINISHED.\n", pl.id);
+      } else {
+        Serial.printf("--> Plant '%s' is moist enough (no watering needed).\n", pl.name.c_str());
       }
     }
   }
